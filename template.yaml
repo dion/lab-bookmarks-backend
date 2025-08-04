@@ -1,0 +1,111 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  bookmarks-backend
+
+  Sample SAM Template for bookmarks-backend
+
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Runtime: nodejs22.x
+    Timeout: 3
+    # You can add LoggingConfig parameters such as the Logformat, Log Group, and SystemLogLevel or ApplicationLogLevel. Learn more here https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/sam-resource-function.html#sam-function-loggingconfig.
+    LoggingConfig:
+      LogFormat: JSON
+Resources:
+  BookmarkTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: BookmarkTable
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: BookmarkUserPool
+
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: BookmarkClient
+      UserPoolId: !Ref CognitoUserPool
+
+  BookmarkApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: BookmarkApi
+      StageName: prod
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        AddDefaultAuthorizerToCorsPreflight: false
+        Authorizers:
+          CognitoAuthorizer:
+            UserPoolArn: !GetAtt CognitoUserPool.Arn
+
+  CreateBookmarkFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/createBookmark/
+      Handler: app.handler
+      Events:
+        CreateBookmark:
+          Type: Api
+          Properties:
+            RestApiId: !Ref BookmarkApi
+            Path: /bookmarks
+            Method: POST
+            Auth:
+              Authorizer: CognitoAuthorizer
+      Environment:
+        Variables:
+          TABLE_NAME: BookmarkTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref BookmarkTable
+
+  GetBookmarksFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/getBookmarks/
+      Handler: app.handler
+      Events:
+        GetBookmarks:
+          Type: Api
+          Properties:
+            RestApiId: !Ref BookmarkApi
+            Path: /bookmarks
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+      Environment:
+        Variables:
+          TABLE_NAME: BookmarkTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref BookmarkTable
+
+Outputs:
+  # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
+  # Find out more about other implicit resources you can reference within SAM
+  # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
+  ApiEndpoint:
+    Description: "API Gateway endpoint URL"
+    Value: !Sub "https://${BookmarkApi}.execute-api.${AWS::Region}.amazonaws.com/prod/"
+
+  # HelloWorldApi:
+  #   Description: API Gateway endpoint URL for Prod stage for Hello World 
+  #     function
+  #   Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/hello/"
+  # HelloWorldFunction:
+  #   Description: Hello World Lambda Function ARN
+  #   Value: !GetAtt HelloWorldFunction.Arn
+  # HelloWorldFunctionIamRole:
+  #   Description: Implicit IAM Role created for Hello World function
+  #   Value: !GetAtt HelloWorldFunctionRole.Arn
