@@ -26,28 +26,21 @@ Resources:
         - AttributeName: userId
           KeyType: HASH
 
-  CognitoUserPool:
-    Type: AWS::Cognito::UserPool
-    Properties:
-      UserPoolName: BookmarkUserPool
-
-  CognitoUserPoolClient:
-    Type: AWS::Cognito::UserPoolClient
-    Properties:
-      ClientName: BookmarkClient
-      UserPoolId: !Ref CognitoUserPool
-
   BookmarkApi:
     Type: AWS::Serverless::Api
     Properties:
       Name: BookmarkApi
       StageName: prod
+      Cors:
+        AllowMethods: "'OPTIONS,GET,POST'"
+        AllowHeaders: "'Content-Type,Authorization'"
+        AllowOrigin: "'*'"
       Auth:
         DefaultAuthorizer: CognitoAuthorizer
         AddDefaultAuthorizerToCorsPreflight: false
         Authorizers:
           CognitoAuthorizer:
-            UserPoolArn: !GetAtt CognitoUserPool.Arn
+            UserPoolArn: arn:aws:cognito-idp:us-east-1:359110058371:userpool/us-east-1_UkxSoZvmM
 
   CreateBookmarkFunction:
     Type: AWS::Serverless::Function

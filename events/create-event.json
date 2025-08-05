@@ -1,0 +1,10 @@
+{
+  "body": "{\"title\": \"Test Bookmark\", \"url\": \"https://example.com\"}",
+  "requestContext": {
+    "authorizer": {
+      "claims": {
+        "sub": "user-123"
+      }
+    }
+  }
+}

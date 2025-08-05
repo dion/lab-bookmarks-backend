@@ -1,0 +1,17 @@
+{
+  "httpMethod": "GET",
+  "path": "/bookmarks",
+  "headers": {
+    "x-user-id": "user-123"
+  },
+  "requestContext": {
+    "authorizer": {
+      "claims": {
+        "sub": "user-123",
+        "email": "jellopops@gmail.com"
+      }
+    }
+  },
+  "body": null,
+  "isBase64Encoded": false
+}
