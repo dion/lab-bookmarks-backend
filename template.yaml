@@ -147,6 +147,36 @@
         Protocol: email
         Endpoint: jellopops@gmail.com  # Replace with your email
 
+    BookmarkContestTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: BookmarkContestEntries
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+
+    BookmarkContestFunction:
+      Type: AWS::Serverless::Function
+      Properties:
+        CodeUri: functions/bookmarkContest/
+        Handler: app.handler
+        Policies:
+          - DynamoDBCrudPolicy:
+              TableName: BookmarkContestEntries
+        Events:
+          BookmarkCreatedEvent:
+            Type: EventBridgeRule
+            Properties:
+              Pattern:
+                source:
+                  - "bookmark.table"
+                detail-type:
+                  - "BookmarkCreated"
+
   Outputs:
     # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
     # Find out more about other implicit resources you can reference within SAM
