@@ -14,17 +14,23 @@
       LoggingConfig:
         LogFormat: JSON
   Resources:
-    BookmarkTable:
+    BookmarkTableV2:
       Type: AWS::DynamoDB::Table
       Properties:
-        TableName: BookmarkTable
+        # TableName: BookmarkTable
         BillingMode: PAY_PER_REQUEST
         AttributeDefinitions:
           - AttributeName: userId
             AttributeType: S
+          - AttributeName: bookmarkId
+            AttributeType: S
         KeySchema:
           - AttributeName: userId
             KeyType: HASH
+          - AttributeName: bookmarkId
+            KeyType: RANGE
+        # StreamSpecification:
+        #   StreamViewType: NEW_IMAGE
 
     BookmarkApi:
       Type: AWS::Serverless::Api
@@ -59,10 +65,10 @@
                 Authorizer: CognitoAuthorizer
         Environment:
           Variables:
-            TABLE_NAME: BookmarkTable
+            TABLE_NAME: !Ref BookmarkTableV2
         Policies:
           - DynamoDBCrudPolicy:
-              TableName: !Ref BookmarkTable
+              TableName: !Ref BookmarkTableV2
 
     GetBookmarksFunction:
       Type: AWS::Serverless::Function
@@ -80,10 +86,10 @@
                 Authorizer: CognitoAuthorizer
         Environment:
           Variables:
-            TABLE_NAME: BookmarkTable
+            TABLE_NAME: !Ref BookmarkTableV2
         Policies:
           - DynamoDBReadPolicy:
-              TableName: !Ref BookmarkTable
+              TableName: !Ref BookmarkTableV2
 
   Outputs:
     # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
@@ -92,14 +98,3 @@
     ApiEndpoint:
       Description: "API Gateway endpoint URL"
       Value: !Sub "https://${BookmarkApi}.execute-api.${AWS::Region}.amazonaws.com/prod/"
-
-    # HelloWorldApi:
-    #   Description: API Gateway endpoint URL for Prod stage for Hello World 
-    #     function
-    #   Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/hello/"
-    # HelloWorldFunction:
-    #   Description: Hello World Lambda Function ARN
-    #   Value: !GetAtt HelloWorldFunction.Arn
-    # HelloWorldFunctionIamRole:
-    #   Description: Implicit IAM Role created for Hello World function
-    #   Value: !GetAtt HelloWorldFunctionRole.Arn
