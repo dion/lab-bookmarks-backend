@@ -21,7 +21,7 @@ export const handler = async (event) => {
       statusCode: 200,
       headers: {
         "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Origin": "https://main.d8co6pmurjf0r.amplifyapp.com",
       },
       body: JSON.stringify(data.Items),
     };

@@ -29,8 +29,8 @@
             KeyType: HASH
           - AttributeName: bookmarkId
             KeyType: RANGE
-        # StreamSpecification:
-        #   StreamViewType: NEW_IMAGE
+        StreamSpecification:
+          StreamViewType: NEW_IMAGE
 
     BookmarkApi:
       Type: AWS::Serverless::Api
@@ -90,6 +90,62 @@
         Policies:
           - DynamoDBReadPolicy:
               TableName: !Ref BookmarkTableV2
+
+    StreamProcessorFunction:
+      Type: AWS::Serverless::Function
+      Properties:
+        CodeUri: functions/streamProcessor/
+        Handler: app.handler
+        Events:
+          BookmarkTableStream:
+            Type: DynamoDB
+            Properties:
+              Stream: !GetAtt BookmarkTableV2.StreamArn
+              StartingPosition: LATEST
+        Policies:
+          - Statement:
+              - Effect: Allow
+                Action: events:PutEvents
+                Resource: "*"
+
+    NewBookmarkTopic:
+      Type: AWS::SNS::Topic
+      Properties:
+        TopicName: NewBookmarkTopic
+
+    BookmarkCreatedRule:
+      Type: AWS::Events::Rule
+      Properties:
+        Name: BookmarkCreatedRule
+        EventPattern:
+          source:
+            - "bookmark.table"
+          detail-type:
+            - "BookmarkCreated"
+        Targets:
+          - Arn: !Ref NewBookmarkTopic
+            Id: "SendToSNSTopic"
+
+    AllowEventBridgeToPublishToSNS:
+      Type: AWS::SNS::TopicPolicy
+      Properties:
+        Topics:
+          - !Ref NewBookmarkTopic
+        PolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: events.amazonaws.com
+              Action: sns:Publish
+              Resource: !Ref NewBookmarkTopic
+
+    NewBookmarkSubscription:
+      Type: AWS::SNS::Subscription
+      Properties:
+        TopicArn: !Ref NewBookmarkTopic
+        Protocol: email
+        Endpoint: jellopops@gmail.com  # Replace with your email
 
   Outputs:
     # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
