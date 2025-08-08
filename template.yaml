@@ -113,18 +113,17 @@
       Properties:
         TopicName: NewBookmarkTopic
 
-    BookmarkCreatedRule:
-      Type: AWS::Events::Rule
+    ApprovalNotificationTopic:
+      Type: AWS::SNS::Topic
       Properties:
-        Name: BookmarkCreatedRule
-        EventPattern:
-          source:
-            - "bookmark.table"
-          detail-type:
-            - "BookmarkCreated"
-        Targets:
-          - Arn: !Ref NewBookmarkTopic
-            Id: "SendToSNSTopic"
+        TopicName: ManualApprovalTopic
+
+    ApprovalNotificationSubscription:
+      Type: AWS::SNS::Subscription
+      Properties:
+        TopicArn: !Ref ApprovalNotificationTopic
+        Protocol: email
+        Endpoint: jellopops@gmail.com
 
     AllowEventBridgeToPublishToSNS:
       Type: AWS::SNS::TopicPolicy
@@ -140,12 +139,109 @@
               Action: sns:Publish
               Resource: !Ref NewBookmarkTopic
 
-    NewBookmarkSubscription:
-      Type: AWS::SNS::Subscription
+    StepFunctionExecutionRole:
+      Type: AWS::IAM::Role
       Properties:
-        TopicArn: !Ref NewBookmarkTopic
-        Protocol: email
-        Endpoint: jellopops@gmail.com  # Replace with your email
+        AssumeRolePolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: states.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: StepFunctionPolicy
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - lambda:InvokeFunction
+                    - dynamodb:PutItem
+                    - dynamodb:UpdateItem
+                  Resource:
+                    - !GetAtt BookmarkContestFunction.Arn
+                    - !GetAtt ManualApprovalFunction.Arn
+
+    BookmarkContestStateMachine:
+      Type: AWS::Serverless::StateMachine
+      Properties:
+        Name: BookmarkContestApprovalWorkflow
+        Role: !GetAtt StepFunctionExecutionRole.Arn
+        Definition:
+          StartAt: WaitForApproval
+          States:
+            WaitForApproval:
+              Type: Task
+              Resource: arn:aws:states:::lambda:invoke.waitForTaskToken
+              Parameters:
+                FunctionName: !Ref ManualApprovalFunction
+                Payload:
+                  token.$: "$$.Task.Token"
+                  input.$: "$"
+              TimeoutSeconds: 86400
+              ResultPath: "$.approvalResult"
+              Next: RunBookmarkContestLogic
+            RunBookmarkContestLogic:
+              Type: Task
+              Resource: !GetAtt BookmarkContestFunction.Arn
+              InputPath: "$"
+              End: true
+
+    EventBridgeInvokeStepFunctionRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: events.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: AllowInvokeStepFunction
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: Allow
+                  Action: states:StartExecution
+                  Resource: !Ref BookmarkContestStateMachine
+
+    ManualApprovalFunction:
+      Type: AWS::Serverless::Function
+      Properties:
+        CodeUri: functions/manualApproval/
+        Handler: app.handler
+        Timeout: 10
+        Environment:
+          Variables:
+            NOTIFICATION_TOPIC_ARN: !Ref ApprovalNotificationTopic
+            APPROVAL_LINK_BASE: !Sub "https://${BookmarkApi}.execute-api.${AWS::Region}.amazonaws.com/prod/approve"
+        Policies:
+          - Statement:
+              - Effect: Allow
+                Action: sns:Publish
+                Resource: !Ref ApprovalNotificationTopic
+
+    ApproveBookmarkFunction:
+      Type: AWS::Serverless::Function
+      Properties:
+        CodeUri: functions/approveBookmark/
+        Handler: app.handler
+        Events:
+          ApproveApi:
+            Type: Api
+            Properties:
+              Path: /approve
+              Method: GET
+              RestApiId: !Ref BookmarkApi
+              Auth:
+                Authorizer: NONE
+        Policies:
+          - Statement:
+              - Effect: Allow
+                Action: states:SendTaskSuccess
+                Resource: "*"
 
     BookmarkContestTable:
       Type: AWS::DynamoDB::Table
@@ -167,15 +263,20 @@
         Policies:
           - DynamoDBCrudPolicy:
               TableName: BookmarkContestEntries
-        Events:
-          BookmarkCreatedEvent:
-            Type: EventBridgeRule
-            Properties:
-              Pattern:
-                source:
-                  - "bookmark.table"
-                detail-type:
-                  - "BookmarkCreated"
+
+    BookmarkCreatedRule:
+      Type: AWS::Events::Rule
+      Properties:
+        Name: BookmarkCreatedRule
+        EventPattern:
+          source:
+            - "bookmark.table"
+          detail-type:
+            - "BookmarkCreated"
+        Targets:
+          - Arn: !Ref BookmarkContestStateMachine
+            Id: "TriggerStepFunction"
+            RoleArn: !GetAtt EventBridgeInvokeStepFunctionRole.Arn
 
   Outputs:
     # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
@@ -184,3 +285,7 @@
     ApiEndpoint:
       Description: "API Gateway endpoint URL"
       Value: !Sub "https://${BookmarkApi}.execute-api.${AWS::Region}.amazonaws.com/prod/"
+
+    ApproveEndpoint:
+      Description: "Approval endpoint URL"
+      Value: !Sub "https://${BookmarkApi}.execute-api.${AWS::Region}.amazonaws.com/prod/approve"

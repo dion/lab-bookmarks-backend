@@ -8,10 +8,16 @@ const client = new DynamoDBClient({});
 const ddb = DynamoDBDocumentClient.from(client);
 
 export const handler = async (event) => {
+  const detail = event.detail;
+
+  if (!detail) {
+    throw new Error("Missing detail in event");
+  }
+
   const entry = {
-    id: event.detail.bookmarkId,
-    user: event.detail.userId,
-    url: event.detail.url,
+    id: detail.bookmarkId,
+    user: detail.userId,
+    url: detail.url,
     createdAt: new Date().toISOString(),
   };
 
