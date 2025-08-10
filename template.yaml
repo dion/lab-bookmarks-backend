@@ -70,8 +70,12 @@
           Variables:
             TABLE_NAME: !Ref BookmarkTableV2
         Policies:
-          - DynamoDBCrudPolicy:
-              TableName: !Ref BookmarkTableV2
+          - Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                Resource: !GetAtt BookmarkTableV2.Arn
 
     GetBookmarksFunction:
       Type: AWS::Serverless::Function
@@ -91,8 +95,11 @@
           Variables:
             TABLE_NAME: !Ref BookmarkTableV2
         Policies:
-          - DynamoDBReadPolicy:
-              TableName: !Ref BookmarkTableV2
+          - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+              Resource: !GetAtt BookmarkTableV2.Arn
 
     StreamProcessorFunction:
       Type: AWS::Serverless::Function
@@ -247,8 +254,12 @@
           Variables:
             CONTEST_TABLE_NAME: !Ref BookmarkContestTable
         Policies:
-          - DynamoDBReadPolicy:
-              TableName: !Ref BookmarkContestTable
+          - Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                Resource: !GetAtt BookmarkContestTable.Arn
     
     ManualApprovalFunction:
       Type: AWS::Serverless::Function
@@ -307,8 +318,12 @@
           Variables:
             FORCE_ERROR: false
         Policies:
-          - DynamoDBCrudPolicy:
-              TableName: BookmarkContestEntries
+          - Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                Resource: !GetAtt BookmarkContestTable.Arn
 
     BookmarkCreatedRule:
       Type: AWS::Events::Rule
