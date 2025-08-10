@@ -8,11 +8,14 @@
   # More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
   Globals:
     Function:
+      Tracing: Active
       Runtime: nodejs22.x
       Timeout: 3
       # You can add LoggingConfig parameters such as the Logformat, Log Group, and SystemLogLevel or ApplicationLogLevel. Learn more here https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/sam-resource-function.html#sam-function-loggingconfig.
       LoggingConfig:
         LogFormat: JSON
+    Api:
+      TracingEnabled: true
   Resources:
     BookmarkTableV2:
       Type: AWS::DynamoDB::Table
@@ -159,18 +162,46 @@
                     - lambda:InvokeFunction
                     - dynamodb:PutItem
                     - dynamodb:UpdateItem
+                    - dynamodb:GetItem
                   Resource:
                     - !GetAtt BookmarkContestFunction.Arn
                     - !GetAtt ManualApprovalFunction.Arn
+                    - !GetAtt ValidateBookmarkFunction.Arn
+                - Effect: Allow
+                  Action: states:SendTaskSuccess
+                  Resource: "*"
 
     BookmarkContestStateMachine:
       Type: AWS::Serverless::StateMachine
       Properties:
+        Tracing:
+          Enabled: true
         Name: BookmarkContestApprovalWorkflow
         Role: !GetAtt StepFunctionExecutionRole.Arn
         Definition:
-          StartAt: WaitForApproval
+          StartAt: ValidateBookmark
           States:
+            ValidateBookmark:
+              Type: Task
+              Resource: !GetAtt ValidateBookmarkFunction.Arn
+              ResultPath: "$.validationResult"
+              Next: CheckValidationResult
+            CheckValidationResult:
+              Type: Choice
+              Choices:
+                - Variable: "$.validationResult.status"
+                  StringEquals: "duplicate"
+                  Next: DuplicateSubmission
+                - Variable: "$.validationResult.status"
+                  StringEquals: "invalid"
+                  Next: InvalidUrl
+              Default: WaitForApproval
+            DuplicateSubmission:
+              Type: Succeed
+              Comment: "Bookmark already exists in contest."
+            InvalidUrl:
+              Type: Succeed
+              Comment: "Bookmark URL is invalid."
             WaitForApproval:
               Type: Task
               Resource: arn:aws:states:::lambda:invoke.waitForTaskToken
@@ -207,6 +238,18 @@
                   Action: states:StartExecution
                   Resource: !Ref BookmarkContestStateMachine
 
+    ValidateBookmarkFunction:
+      Type: AWS::Serverless::Function
+      Properties:
+        CodeUri: functions/validateBookmark/
+        Handler: app.handler
+        Environment:
+          Variables:
+            CONTEST_TABLE_NAME: !Ref BookmarkContestTable
+        Policies:
+          - DynamoDBReadPolicy:
+              TableName: !Ref BookmarkContestTable
+    
     ManualApprovalFunction:
       Type: AWS::Serverless::Function
       Properties:
@@ -260,6 +303,9 @@
       Properties:
         CodeUri: functions/bookmarkContest/
         Handler: app.handler
+        Environment:
+          Variables:
+            FORCE_ERROR: false
         Policies:
           - DynamoDBCrudPolicy:
               TableName: BookmarkContestEntries
@@ -278,10 +324,36 @@
             Id: "TriggerStepFunction"
             RoleArn: !GetAtt EventBridgeInvokeStepFunctionRole.Arn
 
+    OpsAlertsTopic:
+      Type: AWS::SNS::Topic
+      Properties:
+        TopicName: OpsAlertsTopic
+
+    OpsAlertsSubscription:
+      Type: AWS::SNS::Subscription
+      Properties:
+        TopicArn: !Ref OpsAlertsTopic
+        Protocol: email
+        Endpoint: jellopops@gmail.com
+
+    BookmarkContestLambdaErrorAlarm:
+      Type: AWS::CloudWatch::Alarm
+      Properties:
+        AlarmDescription: "Alarm if BookmarkContest Lambda has errors"
+        Namespace: AWS/Lambda
+        MetricName: Errors
+        Dimensions:
+          - Name: FunctionName
+            Value: !Ref BookmarkContestFunction
+        Statistic: Sum
+        Period: 60
+        EvaluationPeriods: 1
+        Threshold: 1
+        ComparisonOperator: GreaterThanOrEqualToThreshold
+        AlarmActions:
+          - arn:aws:sns:us-east-1:359110058371:OpsAlertsTopic
+
   Outputs:
-    # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
-    # Find out more about other implicit resources you can reference within SAM
-    # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
     ApiEndpoint:
       Description: "API Gateway endpoint URL"
       Value: !Sub "https://${BookmarkApi}.execute-api.${AWS::Region}.amazonaws.com/prod/"
