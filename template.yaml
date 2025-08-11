@@ -45,6 +45,11 @@
           AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
           AllowOrigin: "'https://main.d8co6pmurjf0r.amplifyapp.com'"
           AllowCredentials: true
+        MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          ThrottlingRateLimit: 100
+          ThrottlingBurstLimit: 50
         Auth:
           DefaultAuthorizer: CognitoAuthorizer
           AddDefaultAuthorizerToCorsPreflight: false
@@ -368,6 +373,21 @@
         AlarmActions:
           - arn:aws:sns:us-east-1:359110058371:OpsAlertsTopic
 
+# this only works if you have an api key assigned to the API Gateway
+    # BookmarkApiUsagePlan:
+    #   Type: AWS::ApiGateway::UsagePlan
+    #   Properties:
+    #     UsagePlanName: BookmarkApiPlan
+    #     Throttle:
+    #       RateLimit: 100
+    #       BurstLimit: 50
+    #     Quota:
+    #       Limit: 10000
+    #       Period: MONTH
+    #     ApiStages:
+    #       - ApiId: !Ref BookmarkApi
+    #         Stage: prod
+    
   Outputs:
     ApiEndpoint:
       Description: "API Gateway endpoint URL"
